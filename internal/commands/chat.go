@@ -44,6 +44,7 @@ Use 'basecamp chat post "message"' to post a message.`,
 		newChatPostCmd(&project, &chatID, &contentType),
 		newChatUploadCmd(&project, &chatID),
 		newChatLineShowCmd(&project, &chatID),
+		newChatLineUpdateCmd(&project, &chatID, &contentType),
 		newChatLineDeleteCmd(&project, &chatID),
 	)
 
@@ -729,6 +730,139 @@ You can pass either a line ID or a Basecamp line URL:
 	}
 
 	cf = addCommentFlags(cmd, false)
+
+	return cmd
+}
+
+func newChatLineUpdateCmd(project, chatID, contentType *string) *cobra.Command {
+	var content string
+
+	cmd := &cobra.Command{
+		Use:   "update <id|url> [content]",
+		Short: "Update an existing message",
+		Long: `Update the content of an existing chat message.
+
+You can pass either a line ID or a Basecamp line URL:
+  basecamp chat update 789 "edited message" --in my-project
+  basecamp chat update https://3.basecamp.com/123/buckets/456/chats/789/lines/111 --content "edited"
+
+By default, content is sent as plain text. Use --content-type text/html
+for rich text. @mentions resolve like 'chat post' and promote to text/html
+when present.`,
+		Args: cobra.RangeArgs(1, 2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			app := appctx.FromContext(cmd.Context())
+
+			messageContent := content
+			if len(args) > 1 {
+				messageContent = args[1]
+			}
+
+			if strings.TrimSpace(messageContent) == "" {
+				return missingArg(cmd, "<content>")
+			}
+
+			if err := ensureAccount(cmd, app); err != nil {
+				return err
+			}
+
+			lineID, urlProjectID := extractWithProject(args[0])
+
+			projectID := *project
+			if projectID == "" && urlProjectID != "" {
+				projectID = urlProjectID
+			}
+			if projectID == "" {
+				projectID = app.Flags.Project
+			}
+			if projectID == "" {
+				projectID = app.Config.ProjectID
+			}
+			if projectID == "" {
+				if err := ensureProject(cmd, app); err != nil {
+					return err
+				}
+				projectID = app.Config.ProjectID
+			}
+
+			resolvedProjectID, _, err := app.Names.ResolveProject(cmd.Context(), projectID)
+			if err != nil {
+				return err
+			}
+
+			effectiveChatID := *chatID
+			if effectiveChatID == "" {
+				effectiveChatID, err = getChatID(cmd, app, resolvedProjectID)
+				if err != nil {
+					return err
+				}
+			}
+
+			chatIDInt, err := strconv.ParseInt(effectiveChatID, 10, 64)
+			if err != nil {
+				return output.ErrUsage("Invalid chat room ID")
+			}
+			lineIDInt, err := strconv.ParseInt(lineID, 10, 64)
+			if err != nil {
+				return output.ErrUsage("Invalid line ID")
+			}
+
+			// Resolve @mentions — same flow as chat post.
+			ct := *contentType
+			var mentionNotice string
+			if ct == "" || ct == "text/html" {
+				mentionInput := messageContent
+				if ct == "" {
+					mentionInput = richtext.MarkdownToHTML(messageContent)
+				}
+				result, resolveErr := resolveMentions(cmd.Context(), app.Names, mentionInput)
+				if resolveErr != nil {
+					return resolveErr
+				}
+				if result.HTML != mentionInput || len(result.Unresolved) > 0 {
+					messageContent = result.HTML
+					if ct == "" {
+						ct = "text/html"
+					}
+				}
+				mentionNotice = unresolvedMentionWarning(result.Unresolved)
+			}
+
+			var opts *basecamp.UpdateLineOptions
+			if ct != "" {
+				opts = &basecamp.UpdateLineOptions{ContentType: ct}
+			}
+			line, err := app.Account().Campfires().UpdateLine(cmd.Context(), chatIDInt, lineIDInt, messageContent, opts)
+			if err != nil {
+				return convertSDKError(err)
+			}
+
+			respOpts := []output.ResponseOption{
+				output.WithSummary(fmt.Sprintf("Updated line #%s", lineID)),
+				output.WithEntity("chat_line"),
+				output.WithDisplayData(chatLineDisplayData(line)),
+				output.WithBreadcrumbs(
+					output.Breadcrumb{
+						Action:      "show",
+						Cmd:         fmt.Sprintf("basecamp chat line %s --room %s --in %s", lineID, effectiveChatID, resolvedProjectID),
+						Description: "View line",
+					},
+					output.Breadcrumb{
+						Action:      "messages",
+						Cmd:         fmt.Sprintf("basecamp chat messages --room %s --in %s", effectiveChatID, resolvedProjectID),
+						Description: "Back to messages",
+					},
+				),
+			}
+			if mentionNotice != "" {
+				respOpts = append(respOpts, output.WithDiagnostic(mentionNotice))
+			}
+			return app.OK(line, respOpts...)
+		},
+	}
+
+	cmd.Flags().StringVar(&content, "content", "", "New message content")
+	cmd.Flags().StringVar(contentType, "content-type", "", "Content type (text/html for rich text)")
 
 	return cmd
 }

@@ -2,6 +2,11 @@ module github.com/basecamp/basecamp-cli
 
 go 1.26
 
+// Pin to nnemirovsky/basecamp-sdk fork branch that adds UpdateCampfireLine on
+// top of the same SDK commit upstream main is pinned to. Drop this replace
+// once a tagged basecamp/basecamp-sdk release contains CampfiresService.UpdateLine.
+replace github.com/basecamp/basecamp-sdk/go => github.com/nnemirovsky/basecamp-sdk/go v0.5.1-0.20260504094808-329cf5f922ee
+
 require (
 	charm.land/bubbles/v2 v2.1.0
 	charm.land/bubbletea/v2 v2.0.6
