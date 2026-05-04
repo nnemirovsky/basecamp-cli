@@ -19,18 +19,19 @@ import (
 	"github.com/basecamp/basecamp-cli/internal/urlarg"
 )
 
-// chatURLRe matches both forms of Basecamp chat-line URLs and captures
-// the chat (campfire) ID alongside the line ID:
+// chatLineURLRe matches both forms of Basecamp chat-line URLs and captures
+// the chat (campfire) ID alongside the line ID. Anchored to a real Basecamp
+// URL so accidental substrings like `foo/chats/456@111` do not match.
 //
-//	.../chats/{chatID}/lines/{lineID}
-//	.../chats/{chatID}@{lineID}
-var chatURLRe = regexp.MustCompile(`/chats/(\d+)(?:/lines/|@)(\d+)`)
+//	https://3.basecamp.com/{account}/buckets/{bucket}/chats/{chatID}/lines/{lineID}
+//	https://3.basecamp.com/{account}/buckets/{bucket}/chats/{chatID}@{lineID}
+var chatLineURLRe = regexp.MustCompile(`^https?://[^/]+/\d+/buckets/\d+/chats/(\d+)(?:/lines/|@)(\d+)`)
 
 // extractChatLineFromURL pulls the chat (campfire) ID from a chat-line URL
 // when present. Returns ("", "") if arg is not a chat-line URL — callers fall
 // back to --room and the project's default chat in that case.
 func extractChatLineFromURL(arg string) (chatID, lineID string) {
-	m := chatURLRe.FindStringSubmatch(arg)
+	m := chatLineURLRe.FindStringSubmatch(arg)
 	if m == nil {
 		return "", ""
 	}
@@ -800,9 +801,12 @@ when present.`,
 				return output.ErrUsage("expected a chat-line ID or URL of the form /chats/{c}/lines/{l} or /chats/{c}@{l}")
 			}
 
-			projectID := *project
-			if projectID == "" && urlProjectID != "" {
-				projectID = urlProjectID
+			// URL-derived bucket wins over --in/--project: the URL is unambiguous
+			// about which project owns the line, while the flag may be stale from a
+			// previous command in the same shell.
+			projectID := urlProjectID
+			if projectID == "" {
+				projectID = *project
 			}
 			if projectID == "" {
 				projectID = app.Flags.Project
@@ -822,8 +826,9 @@ when present.`,
 				return err
 			}
 
-			// URL-derived chat ID wins over --room: the URL is unambiguous about
-			// which campfire owns the line, while --room is a project-wide hint.
+			// URL-derived chat ID wins over --room for the same reason: the URL is
+			// unambiguous about which campfire owns the line, while --room is a
+			// project-wide hint that may not match.
 			effectiveChatID := urlChatID
 			if effectiveChatID == "" {
 				effectiveChatID = *chatID
