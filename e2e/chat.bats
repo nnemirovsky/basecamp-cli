@@ -101,6 +101,7 @@ load test_helper
 
   run basecamp chat update
   assert_failure
+  assert_output_contains "required"
 }
 
 

@@ -37,7 +37,7 @@ The **Since** column tags each row with the Basecamp version that introduced its
 | messages | 10 | `messages`, `message` | ✅ | BC4 | - | list, show, create, update, publish, pin, unpin. Create supports `--subscribe`/`--no-subscribe` and `--draft`. Publish promotes drafts to active |
 | message_boards | 3 | `messageboards` | ✅ | BC4 | - | Container, accessed via project dock |
 | message_types | 5 | `messagetypes` | ✅ | BC4 | - | list, show, create, update, delete |
-| campfires | 14 | `chat` | ✅ | BC4 | - | list, messages, post, line show/delete. @mentions in content |
+| campfires | 14 | `chat` | ✅ | BC4 | - | list, messages, post, line show/update/delete. @mentions in content |
 | comments | 8 | `comment`, `comments` | ✅ | BC4 | - | list, show, create, update. @mentions in content |
 | boosts | 6 | `boost`, `react` | ✅ | BC4 | - | list (recording + event), show, create (recording + event), delete |
 | notifications | 2 | `notifications` | ✅ | BC4 | - | list, mark as read |

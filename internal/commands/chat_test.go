@@ -1094,7 +1094,8 @@ func TestChatPostAgentModeWarningOnStderr(t *testing.T) {
 
 // TestChatDeleteReturnsDeletedPayload verifies that delete returns {"deleted": true, "id": "..."}.
 // mockChatUpdateTransport handles resolver GETs, the PUT update, and the
-// follow-up GET that UpdateLine performs to re-fetch the line.
+// follow-up GET that UpdateLine performs to re-fetch the line. It also serves
+// pingable people for mention-resolution tests.
 type mockChatUpdateTransport struct {
 	capturedMethod string
 	capturedPath   string
@@ -1112,6 +1113,8 @@ func (t *mockChatUpdateTransport) RoundTrip(req *http.Request) (*http.Response, 
 			body = `[{"id": 123, "name": "Test Project"}]`
 		case strings.Contains(req.URL.Path, "/projects/"):
 			body = `{"id": 123, "dock": [{"name": "chat", "id": 789, "enabled": true}]}`
+		case strings.Contains(req.URL.Path, "/circles/people.json") || strings.Contains(req.URL.Path, "/people/pingable.json"):
+			body = `[{"id": 42000, "name": "Jane Smith", "email_address": "jane@example.com", "attachable_sgid": "sgid-jane"}]`
 		case strings.Contains(req.URL.Path, "/lines/"):
 			body = `{"id": 111, "content": "Edited!", "type": "Chat::Lines::Text", "creator": {"id": 1, "name": "Tester"}}`
 		default:
@@ -1157,6 +1160,79 @@ func TestChatUpdateSendsPutAndReturnsLine(t *testing.T) {
 	data, ok := envelope["data"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, float64(111), data["id"])
+}
+
+// TestChatUpdateMentionPromotesToHTML verifies that an @mention in content
+// auto-promotes to text/html and resolves to a bc-attachment tag, mirroring
+// chat post behavior.
+func TestChatUpdateMentionPromotesToHTML(t *testing.T) {
+	t.Setenv("BASECAMP_NO_KEYRING", "1")
+
+	transport := &mockChatUpdateTransport{}
+	app, _ := newChatDeleteTestApp(transport)
+
+	cmd := NewChatCmd()
+	err := executeChatCommand(cmd, app, "update", "111", "Hey @Jane.Smith, see this")
+	require.NoError(t, err)
+	require.NotEmpty(t, transport.capturedBody)
+
+	var requestBody map[string]any
+	require.NoError(t, json.Unmarshal(transport.capturedBody, &requestBody))
+
+	assert.Equal(t, "text/html", requestBody["content_type"],
+		"content_type should be promoted to text/html when mentions resolve")
+	content, ok := requestBody["content"].(string)
+	require.True(t, ok)
+	assert.Contains(t, content, "bc-attachment",
+		"content should contain bc-attachment mention tag")
+}
+
+// TestChatUpdatePlainTextOptOut verifies that --content-type text/plain
+// bypasses mention resolution and sends content as-is.
+func TestChatUpdatePlainTextOptOut(t *testing.T) {
+	t.Setenv("BASECAMP_NO_KEYRING", "1")
+
+	transport := &mockChatUpdateTransport{}
+	app, _ := newChatDeleteTestApp(transport)
+
+	cmd := NewChatCmd()
+	err := executeChatCommand(cmd, app, "update", "111", "Hey @Jane.Smith", "--content-type", "text/plain")
+	require.NoError(t, err)
+	require.NotEmpty(t, transport.capturedBody)
+
+	var requestBody map[string]any
+	require.NoError(t, json.Unmarshal(transport.capturedBody, &requestBody))
+
+	assert.Equal(t, "text/plain", requestBody["content_type"],
+		"content_type should remain text/plain when explicitly set")
+	content, ok := requestBody["content"].(string)
+	require.True(t, ok)
+	assert.NotContains(t, content, "bc-attachment",
+		"content should not contain bc-attachment when content-type is text/plain")
+	assert.Contains(t, content, "@Jane.Smith",
+		"@mention should be left as literal text")
+}
+
+// TestChatUpdateExtractsChatIDFromURL verifies that pasting a chat-line URL
+// targets the chat referenced by the URL rather than falling back to --room or
+// the project's default chat — important for projects with multiple campfires.
+func TestChatUpdateExtractsChatIDFromURL(t *testing.T) {
+	t.Setenv("BASECAMP_NO_KEYRING", "1")
+
+	transport := &mockChatUpdateTransport{}
+	app, _ := newChatDeleteTestApp(transport)
+
+	cmd := NewChatCmd()
+	err := executeChatCommand(cmd, app,
+		"update",
+		"https://3.basecamp.com/99999/buckets/123/chats/456@111",
+		"Edited via URL")
+	require.NoError(t, err)
+
+	// PUT should target /chats/456/lines/111 — the chat ID came from the URL,
+	// not from --room or the dock default (789).
+	assert.Equal(t, "PUT", transport.capturedMethod)
+	assert.Contains(t, transport.capturedPath, "/chats/456/lines/111")
 }
 
 func TestChatUpdateRejectsEmptyContent(t *testing.T) {

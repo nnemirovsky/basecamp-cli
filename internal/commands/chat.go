@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -15,7 +16,26 @@ import (
 	"github.com/basecamp/basecamp-cli/internal/output"
 	"github.com/basecamp/basecamp-cli/internal/richtext"
 	"github.com/basecamp/basecamp-cli/internal/tui"
+	"github.com/basecamp/basecamp-cli/internal/urlarg"
 )
+
+// chatURLRe matches both forms of Basecamp chat-line URLs and captures
+// the chat (campfire) ID alongside the line ID:
+//
+//	.../chats/{chatID}/lines/{lineID}
+//	.../chats/{chatID}@{lineID}
+var chatURLRe = regexp.MustCompile(`/chats/(\d+)(?:/lines/|@)(\d+)`)
+
+// extractChatLineFromURL pulls the chat (campfire) ID from a chat-line URL
+// when present. Returns ("", "") if arg is not a chat-line URL — callers fall
+// back to --room and the project's default chat in that case.
+func extractChatLineFromURL(arg string) (chatID, lineID string) {
+	m := chatURLRe.FindStringSubmatch(arg)
+	if m == nil {
+		return "", ""
+	}
+	return m[1], m[2]
+}
 
 // NewChatCmd creates the chat command for real-time chat.
 func NewChatCmd() *cobra.Command {
@@ -766,7 +786,19 @@ when present.`,
 				return err
 			}
 
-			lineID, urlProjectID := extractWithProject(args[0])
+			// Reject non-chat-line URLs up front. We accept either bare numeric IDs
+			// or chat-line URLs in either /chats/{c}/lines/{l} or /chats/{c}@{l} form.
+			// A pasted card/todo/message URL would otherwise be silently misinterpreted
+			// as a numeric line ID via extractWithProject.
+			urlChatID, urlLineID := extractChatLineFromURL(args[0])
+			lineID := args[0]
+			urlProjectID := ""
+			if urlChatID != "" {
+				lineID = urlLineID
+				_, urlProjectID = extractWithProject(args[0])
+			} else if urlarg.IsURL(args[0]) {
+				return output.ErrUsage("expected a chat-line ID or URL of the form /chats/{c}/lines/{l} or /chats/{c}@{l}")
+			}
 
 			projectID := *project
 			if projectID == "" && urlProjectID != "" {
@@ -790,7 +822,12 @@ when present.`,
 				return err
 			}
 
-			effectiveChatID := *chatID
+			// URL-derived chat ID wins over --room: the URL is unambiguous about
+			// which campfire owns the line, while --room is a project-wide hint.
+			effectiveChatID := urlChatID
+			if effectiveChatID == "" {
+				effectiveChatID = *chatID
+			}
 			if effectiveChatID == "" {
 				effectiveChatID, err = getChatID(cmd, app, resolvedProjectID)
 				if err != nil {
@@ -832,15 +869,18 @@ when present.`,
 			if ct != "" {
 				opts = &basecamp.UpdateLineOptions{ContentType: ct}
 			}
-			line, err := app.Account().Campfires().UpdateLine(cmd.Context(), chatIDInt, lineIDInt, messageContent, opts)
-			if err != nil {
+			if err := app.Account().Campfires().UpdateLine(cmd.Context(), chatIDInt, lineIDInt, messageContent, opts); err != nil {
 				return convertSDKError(err)
 			}
+
+			// SDK PUT returns 204; re-fetch so the response carries the canonical
+			// post-update line. A failure here doesn't roll back the update — we
+			// surface it as a diagnostic rather than the command's exit code.
+			line, fetchErr := app.Account().Campfires().GetLine(cmd.Context(), chatIDInt, lineIDInt)
 
 			respOpts := []output.ResponseOption{
 				output.WithSummary(fmt.Sprintf("Updated line #%s", lineID)),
 				output.WithEntity("chat_line"),
-				output.WithDisplayData(chatLineDisplayData(line)),
 				output.WithBreadcrumbs(
 					output.Breadcrumb{
 						Action:      "show",
@@ -854,8 +894,18 @@ when present.`,
 					},
 				),
 			}
+			if line != nil {
+				respOpts = append(respOpts, output.WithDisplayData(chatLineDisplayData(line)))
+			}
 			if mentionNotice != "" {
 				respOpts = append(respOpts, output.WithDiagnostic(mentionNotice))
+			}
+			if fetchErr != nil {
+				respOpts = append(respOpts, output.WithDiagnostic(fmt.Sprintf("update succeeded; refetch failed: %v", fetchErr)))
+			}
+
+			if line == nil {
+				return app.OK(map[string]any{"updated": true, "id": lineID}, respOpts...)
 			}
 			return app.OK(line, respOpts...)
 		},
