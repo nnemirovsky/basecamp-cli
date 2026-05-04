@@ -428,7 +428,7 @@ basecamp todos position <id> --to 1 --list <id|name|url> # Move to different lis
 basecamp todos sweep --overdue --complete --comment "Done" --in <project>
 ```
 
-**Flags:** `--assignee` (todos only - not available on cards/messages), `--status` (completed/incomplete), `--overdue`, `--list`, `--due`, `--limit`, `--all`
+**Flags:** `--assignee` (todos only - not available on cards/messages), `--status` (completed/incomplete/archived/trashed), `--overdue`, `--list`, `--due`, `--limit`, `--all`
 
 ### Todolists
 
@@ -532,8 +532,12 @@ basecamp files folder create "Folder" --in <project>
 basecamp files doc create "Doc" "Body" --in <project>
 basecamp files doc create "Draft" --draft --in <project>
 basecamp files doc create "Notes" "..." --no-subscribe --in <project>
-basecamp files update <id> --title "New" --content "Updated"
+basecamp files update <document_id> --title "New" --content "Updated"
+basecamp files update <document_id> --title "New" --in <project>      # Preserves existing document content
+basecamp files update <document_id> --content "Updated" --in <project> # Preserves existing document title
 ```
+
+**Document update semantics:** `basecamp files update <document_id>` is safe for partial updates in the CLI: when you pass only `--title` or only `--content`, the CLI first fetches the current document and preserves the untouched field.
 
 **Subcommands:** `folders`, `uploads`, `documents` (each with pagination flags)
 
@@ -725,6 +729,7 @@ basecamp chat messages --in <project> --json  # List messages
 basecamp chat post "Hello!" --in <project>
 basecamp chat post "@Jane.Smith, check this" --in <project>  # With @mention (auto text/html)
 basecamp chat line <line_id> --in <project>   # Show line
+basecamp chat update <line_id> "edited content" --in <project>  # Edit existing message in place
 basecamp chat delete <line_id> --in <project> --force # Delete line (permanent, not trashable)
 ```
 

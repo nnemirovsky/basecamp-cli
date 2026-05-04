@@ -1093,6 +1093,85 @@ func TestChatPostAgentModeWarningOnStderr(t *testing.T) {
 }
 
 // TestChatDeleteReturnsDeletedPayload verifies that delete returns {"deleted": true, "id": "..."}.
+// mockChatUpdateTransport handles resolver GETs, the PUT update, and the
+// follow-up GET that UpdateLine performs to re-fetch the line.
+type mockChatUpdateTransport struct {
+	capturedMethod string
+	capturedPath   string
+	capturedBody   []byte
+}
+
+func (t *mockChatUpdateTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	header := make(http.Header)
+	header.Set("Content-Type", "application/json")
+
+	if req.Method == "GET" {
+		var body string
+		switch {
+		case strings.Contains(req.URL.Path, "/projects.json"):
+			body = `[{"id": 123, "name": "Test Project"}]`
+		case strings.Contains(req.URL.Path, "/projects/"):
+			body = `{"id": 123, "dock": [{"name": "chat", "id": 789, "enabled": true}]}`
+		case strings.Contains(req.URL.Path, "/lines/"):
+			body = `{"id": 111, "content": "Edited!", "type": "Chat::Lines::Text", "creator": {"id": 1, "name": "Tester"}}`
+		default:
+			body = `{}`
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Header: header}, nil
+	}
+
+	if req.Method == "PUT" {
+		t.capturedMethod = req.Method
+		t.capturedPath = req.URL.Path
+		if req.Body != nil {
+			t.capturedBody, _ = io.ReadAll(req.Body)
+			req.Body.Close()
+		}
+		return &http.Response{StatusCode: 204, Body: io.NopCloser(strings.NewReader("")), Header: header}, nil
+	}
+
+	return nil, errors.New("unexpected request")
+}
+
+func TestChatUpdateSendsPutAndReturnsLine(t *testing.T) {
+	t.Setenv("BASECAMP_NO_KEYRING", "1")
+
+	transport := &mockChatUpdateTransport{}
+	app, buf := newChatDeleteTestApp(transport)
+
+	cmd := NewChatCmd()
+	err := executeChatCommand(cmd, app, "update", "111", "Edited!")
+	require.NoError(t, err)
+
+	assert.Equal(t, "PUT", transport.capturedMethod)
+	assert.Contains(t, transport.capturedPath, "/lines/111")
+
+	var requestBody map[string]any
+	require.NoError(t, json.Unmarshal(transport.capturedBody, &requestBody))
+	assert.Equal(t, "Edited!", requestBody["content"])
+	_, hasContentType := requestBody["content_type"]
+	assert.False(t, hasContentType, "content_type should be absent without --content-type")
+
+	var envelope map[string]any
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &envelope))
+	data, ok := envelope["data"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, float64(111), data["id"])
+}
+
+func TestChatUpdateRejectsEmptyContent(t *testing.T) {
+	t.Setenv("BASECAMP_NO_KEYRING", "1")
+
+	transport := &mockChatUpdateTransport{}
+	app, _ := newChatDeleteTestApp(transport)
+	app.Flags.Agent = true // forces structured ErrUsageHint instead of help text
+
+	cmd := NewChatCmd()
+	err := executeChatCommand(cmd, app, "update", "111", "")
+	require.Error(t, err)
+	assert.Empty(t, transport.capturedMethod, "no PUT should be issued when content is empty")
+}
+
 func TestChatDeleteReturnsDeletedPayload(t *testing.T) {
 	t.Setenv("BASECAMP_NO_KEYRING", "1")
 

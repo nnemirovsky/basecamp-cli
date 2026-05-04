@@ -2,11 +2,16 @@ module github.com/basecamp/basecamp-cli
 
 go 1.26
 
+// Pin to nnemirovsky/basecamp-sdk fork branch that adds UpdateCampfireLine on
+// top of the same SDK commit upstream main is pinned to. Drop this replace
+// once a tagged basecamp/basecamp-sdk release contains CampfiresService.UpdateLine.
+replace github.com/basecamp/basecamp-sdk/go => github.com/nnemirovsky/basecamp-sdk/go v0.5.1-0.20260504094808-329cf5f922ee
+
 require (
 	charm.land/bubbles/v2 v2.1.0
 	charm.land/bubbletea/v2 v2.0.6
 	charm.land/lipgloss/v2 v2.0.3
-	github.com/basecamp/basecamp-sdk/go v0.7.3
+	github.com/basecamp/basecamp-sdk/go v0.7.4-0.20260423230153-f54589f0924a
 	github.com/basecamp/cli v0.2.1
 	github.com/charmbracelet/bubbles v1.0.0
 	github.com/charmbracelet/glamour v1.0.0
@@ -19,7 +24,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
-	github.com/yuin/goldmark v1.7.13
+	github.com/yuin/goldmark v1.8.2
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/mod v0.35.0
 	golang.org/x/sys v0.43.0
@@ -66,13 +71,13 @@ require (
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/muesli/reflow v0.3.0 // indirect
 	github.com/muesli/termenv v0.16.0 // indirect
-	github.com/oapi-codegen/runtime v1.3.1 // indirect
+	github.com/oapi-codegen/runtime v1.4.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/yuin/goldmark-emoji v1.0.6 // indirect
-	golang.org/x/net v0.38.0 // indirect
+	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/term v0.36.0 // indirect
+	golang.org/x/term v0.38.0 // indirect
 )

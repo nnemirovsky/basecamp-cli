@@ -44,6 +44,19 @@ setup_file() {
   assert_json_not_null '.data.id'
 }
 
+@test "campfire update edits a message" {
+  local id_file="$BATS_FILE_TMPDIR/campfire_line_id"
+  [[ -f "$id_file" ]] || mark_unverifiable "No campfire line created in prior test"
+  local line_id
+  line_id=$(<"$id_file")
+
+  run_smoke basecamp campfire update "$line_id" "Edited smoke test $(date +%s)" \
+    --room "$QA_CAMPFIRE" -p "$QA_PROJECT" --json
+  assert_success
+  assert_json_value '.ok' 'true'
+  assert_json_not_null '.data.id'
+}
+
 @test "campfire delete deletes a message" {
   local id_file="$BATS_FILE_TMPDIR/campfire_line_id"
   [[ -f "$id_file" ]] || mark_unverifiable "No campfire line created in prior test"

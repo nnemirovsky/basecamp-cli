@@ -46,7 +46,7 @@ jobs:
 
       - name: Cache BATS
         id: cache-bats
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4 # zizmor: ignore[cache-poisoning] -- cache is branch-isolated; fork PRs cannot write to the cache used by tag-push workflows
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 # zizmor: ignore[cache-poisoning] -- cache is branch-isolated; fork PRs cannot write to the cache used by tag-push workflows
         with:
           path: ~/.local
           key: bats-1.11.0-home
@@ -118,7 +118,7 @@ jobs:
 
       - name: Generate token for Homebrew tap
         id: sdk-token
-        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859 # v3.0.0
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
         with:
           app-id: ${{ vars.RELEASE_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
@@ -225,25 +225,12 @@ jobs:
           MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
           MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
 
-      - name: Install quill for macOS signing
-        run: |
-          go install github.com/anchore/quill/cmd/quill@v0.7.1
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-
-      - name: Prepare signing credentials
-        env:
-          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
-          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
-        run: |
-          umask 077
-          echo "$MACOS_SIGN_P12" | base64 -d > "$RUNNER_TEMP/codesign.p12"
-          echo "$MACOS_NOTARY_KEY" | base64 -d > "$RUNNER_TEMP/notary.p8"
-
       - name: Install GoReleaser
         uses: goreleaser/goreleaser-action@ec59f474b9834571250b370d4735c50f8e2d1e29 # v7.0.0
         with:
           distribution: goreleaser
-          version: 'v2.14.1'
+          # Keep in sync with .mise.toml goreleaser version pin.
+          version: 'v2.15.4'
           install-only: true
 
       - name: Run GoReleaser
@@ -251,33 +238,18 @@ jobs:
           CHANGELOG_FILE: ${{ steps.changelog.outputs.file }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ steps.sdk-token.outputs.token }}
-          QUILL_SIGN_P12: ${{ runner.temp }}/codesign.p12
-          QUILL_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+          MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
         run: |
           RELEASE_CHANGELOG=""
           if [ -n "$CHANGELOG_FILE" ] && [ -f "$CHANGELOG_FILE" ]; then
             RELEASE_CHANGELOG=$(cat "$CHANGELOG_FILE")
           fi
           export RELEASE_CHANGELOG
-          goreleaser release --clean --skip=notarize
-
-      - name: Notarize macOS binaries
-        env:
-          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
-          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
-        run: |
-          for bin in dist/basecamp_darwin_*/basecamp; do
-            echo "Notarizing $bin..."
-            quill notarize "$bin" \
-              --notary-issuer "$MACOS_NOTARY_ISSUER_ID" \
-              --notary-key-id "$MACOS_NOTARY_KEY_ID" \
-              --notary-key "$RUNNER_TEMP/notary.p8" \
-              --wait
-          done
-
-      - name: Clean up signing credentials
-        if: always()
-        run: rm -f "$RUNNER_TEMP/codesign.p12" "$RUNNER_TEMP/notary.p8"
+          goreleaser release --clean
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
@@ -365,7 +337,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Nix
-        uses: cachix/install-nix-action@616559265b40713947b9c190a8ff4b507b5df49b # v31.10.4
+        uses: cachix/install-nix-action@ab739621df7a23f52766f9ccc97f38da6b7af14f # v31.10.5
 
       - name: Build and verify
         run: |
@@ -393,7 +365,7 @@ jobs:
 
       - name: Generate token for skills repo
         id: skills-token
-        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859 # v3.0.0
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
         with:
           app-id: ${{ vars.RELEASE_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
