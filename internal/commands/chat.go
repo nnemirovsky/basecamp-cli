@@ -19,13 +19,14 @@ import (
 	"github.com/basecamp/basecamp-cli/internal/urlarg"
 )
 
-// chatLineURLRe matches both forms of Basecamp chat-line URLs and captures
-// the chat (campfire) ID alongside the line ID. Anchored to a real Basecamp
-// URL so accidental substrings like `foo/chats/456@111` do not match.
+// chatLineURLRe captures the chat (campfire) ID and line ID from a Basecamp
+// chat-line URL. The host is locked to the public Basecamp 3 domains so a
+// look-alike URL on another host can't slip through.
 //
 //	https://3.basecamp.com/{account}/buckets/{bucket}/chats/{chatID}/lines/{lineID}
 //	https://3.basecamp.com/{account}/buckets/{bucket}/chats/{chatID}@{lineID}
-var chatLineURLRe = regexp.MustCompile(`^https?://[^/]+/\d+/buckets/\d+/chats/(\d+)(?:/lines/|@)(\d+)`)
+//	(also matches the `3.basecampapi.com` variant returned by the API)
+var chatLineURLRe = regexp.MustCompile(`^https?://3\.basecamp(?:api)?\.com/\d+/buckets/\d+/chats/(\d+)(?:/lines/|@)(\d+)`)
 
 // extractChatLineFromURL pulls the chat (campfire) ID from a chat-line URL
 // when present. Returns ("", "") if arg is not a chat-line URL — callers fall

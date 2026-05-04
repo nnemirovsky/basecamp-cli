@@ -16,7 +16,7 @@ Out-of-scope sections are excluded from parity totals and scripts: chatbots (dif
 
 > Note: the per-row `Endpoints` column in the Coverage by Section table sums higher than the Summary totals above. The discrepancy predates the BC5 baseline; the row count (46 sections) is authoritative for the `Since` column. Reconciling endpoint counts is pre-existing maintenance, tracked separately.
 
-**SDK version:** v0.7.3 — maintenance bump: API date advanced to 2026-03-23, transitive dependency updates. No new services or methods.
+**SDK version:** v0.7.3 + pending UpdateCampfireLine (basecamp/basecamp-sdk#295). On merge of the SDK PR + next tagged release, this header will move to that version and the temporary fork pin in `go.mod` will be dropped.
 
 ## Coverage by Section
 
